@@ -218,10 +218,36 @@ static inline float make_f0(int b0) {
 	return (powf(2, (-4.311767578125 - (2.1336e-2 * ((float)b0+0.5)))));
 }
 
+static void set_ambe_silence_params(mbe_parms* cur_mp)
+{
+	cur_mp->w0 = (2.0f * (float)M_PI) / 32.0f;
+	cur_mp->L = 14;
+	cur_mp->gamma = AmbeDg[1];
+	for (int l = 1; l <= cur_mp->L; l++) {
+		cur_mp->Vl[l] = 0;
+		cur_mp->log2Ml[l] = 0.0f;
+	}
+	cur_mp->log2Ml[0] = 0.0f;
+}
+
 static void encode_ambe(const IMBE_PARAM *imbe_param, int b[], mbe_parms*cur_mp, mbe_parms*prev_mp, bool dstar, float gain_adjust) {
 	static const float SQRT_2 = sqrtf(2.0);
 	static const int b0_lmax = sizeof(b0_lookup) / sizeof(b0_lookup[0]);
 	// int b[9];
+
+	float sa_total = 0.0f;
+	for (int l = 0; l < imbe_param->num_harms; l++) {
+		sa_total += (float)imbe_param->sa[l];
+	}
+	if (!dstar && (sa_total < 40.0f || imbe_param->num_harms < 9)) {
+		b[0] = 124;
+		b[1] = 16;
+		b[2] = 1;
+		for (int i = 3; i < 9; i++) b[i] = 0;
+		set_ambe_silence_params(cur_mp);
+		mbe_moveMbeParms(cur_mp, prev_mp);
+		return;
+	}
 
 	// ref_pitch is Q8_8 in range 19.875 - 123.125
 	int b0_i = (imbe_param->ref_pitch >> 5) - 159;
@@ -261,7 +287,7 @@ static void encode_ambe(const IMBE_PARAM *imbe_param, int b[], mbe_parms*cur_mp,
 
 	float en_min = 0;
 	b[1] = 0;
-	int vuv_max = (dstar) ? 16 : 17;
+	int vuv_max = (dstar) ? 16 : 32;
 	for (int n=0; n < vuv_max; n++) {
 		float En = 0;
 		for (int l=1; l <= L; l++) {
@@ -270,14 +296,15 @@ static void encode_ambe(const IMBE_PARAM *imbe_param, int b[], mbe_parms*cur_mp,
 				jl = (int) ((float) l * (float) 16.0 * make_f0(b[0]));
 			else
 				jl = (int) ((float) l * (float) 16.0 * AmbeW0table[b[0]]);
-			int kl = 12;
-			if (l <= 36)
-				kl = (l + 2) / 3;
+			if (jl > 7) jl = 7;
 			if (dstar) {
+				int kl = 12;
+				if (l <= 36)
+					kl = (l + 2) / 3;
 				if (imbe_param->v_uv_dsn[(kl-1)*3] != AmbePlusVuv[n][jl])
 					En += m_float2[l-1];
 			} else {
-				if (imbe_param->v_uv_dsn[(kl-1)*3] != AmbeVuv[n][jl])
+				if (imbe_param->v_uv_dsn[l-1] != AmbeVuv[n][jl])
 					En += m_float2[l-1];
 			}
 		}
