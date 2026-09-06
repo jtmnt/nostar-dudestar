@@ -347,13 +347,14 @@ static void encode_ambe(const IMBE_PARAM *imbe_param, int b[], mbe_parms*cur_mp,
 		float kl_frac = kl - kl_floor;
 		tmp_s += (1.0 - kl_frac) * prev_mp->log2Ml[kl_floor  +0] + kl_frac * prev_mp->log2Ml[kl_floor+1  +0];
 	}
+	float sum43 = (0.65f / num_harms_f) * tmp_s;
 	float T[NUM_HARMS_MAX];
 	for (int i1 = 0; i1 < imbe_param->num_harms; i1++) {
 		float kl = l_prev_l * (float)(i1+1);
 		int kl_floor = (int) kl;
 		float kl_frac = kl - kl_floor;
-		T[i1] = lsa[i1] - 0.65 * (1.0 - kl_frac) * prev_mp->log2Ml[kl_floor  +0]	\
-				- 0.65 * kl_frac * prev_mp->log2Ml[kl_floor+1  +0];
+		float pred = 0.65f * ((1.0f - kl_frac) * prev_mp->log2Ml[kl_floor  +0] + kl_frac * prev_mp->log2Ml[kl_floor+1  +0]);
+		T[i1] = (lsa[i1] - gain) - (pred - sum43);
 	}
 
 	// DCT
